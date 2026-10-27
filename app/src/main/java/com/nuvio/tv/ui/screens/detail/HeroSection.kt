@@ -83,6 +83,17 @@ import java.util.Locale
 
 private const val MAX_VISIBLE_HERO_GENRES = 6
 
+// Netflix-style action buttons: near-square corners, white Play, translucent gray secondary.
+// Flip to false to restore the original pill/circle buttons (keeps upstream merges simple).
+private const val NETFLIX_BUTTONS = true
+private val NetflixButtonShape = RoundedCornerShape(4.dp)
+private val NetflixPlayFocused = Color.White
+private val NetflixPlayHover = Color(0xFFE6E6E6)
+// Icon buttons ("Play + Add + Thumb Up" pattern): transparent circle with thin outline.
+private val NetflixIconOutline = Color.White.copy(alpha = 0.6f)
+// Maturity rating / status chips: thin gray outline, almost square corners.
+private val NetflixBadgeShape = RoundedCornerShape(2.dp)
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun HeroContentSection(
@@ -120,7 +131,7 @@ fun HeroContentSection(
         meta.logo?.let { logo ->
             ImageRequest.Builder(context)
                 .data(logo)
-                .crossfade(true)
+                .crossfade(false)
                 .build()
         }
     }
@@ -178,9 +189,6 @@ fun HeroContentSection(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .animateContentSize(
-                    animationSpec = tween(600)
-                )
                 .padding(start = NuvioTheme.spacing.xxxl, end = NuvioTheme.spacing.xxxl, bottom = NuvioTheme.spacing.lg),
             verticalArrangement = Arrangement.Bottom
         ) {
@@ -412,17 +420,17 @@ private fun PlayButton(
             .focusProperties { up = FocusRequester.Cancel },
         colors = ButtonDefaults.colors(
             containerColor = androidx.compose.ui.graphics.Color.White,
-            focusedContainerColor = androidx.compose.ui.graphics.Color.White,
+            focusedContainerColor = if (NETFLIX_BUTTONS) NetflixPlayHover else androidx.compose.ui.graphics.Color.White,
             contentColor = androidx.compose.ui.graphics.Color.Black,
             focusedContentColor = androidx.compose.ui.graphics.Color.Black
         ),
         shape = ButtonDefaults.shape(
-            shape = RoundedCornerShape(NuvioTheme.spacing.xxl)
+            shape = if (NETFLIX_BUTTONS) NetflixButtonShape else RoundedCornerShape(NuvioTheme.spacing.xxl)
         ),
         border = ButtonDefaults.border(
             focusedBorder = Border(
-                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                shape = RoundedCornerShape(NuvioTheme.spacing.xxl)
+                border = if (NETFLIX_BUTTONS) BorderStroke(0.dp, Color.Transparent) else NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
+                shape = if (NETFLIX_BUTTONS) NetflixButtonShape else RoundedCornerShape(NuvioTheme.spacing.xxl)
             )
         ),
         contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.xl, vertical = 14.dp)
@@ -449,7 +457,8 @@ private fun PlayButton(
             ) {
                 Text(
                     text = text ?: "",
-                    style = MaterialTheme.typography.labelLarge
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = if (NETFLIX_BUTTONS) androidx.compose.ui.text.font.FontWeight.Bold else null
                 )
             }
         }
@@ -475,14 +484,18 @@ private fun ActionIconButtonPainter(
             }
             .focusProperties { up = FocusRequester.Cancel },
         colors = IconButtonDefaults.colors(
-            containerColor = NuvioTheme.colors.BackgroundCard,
-            focusedContainerColor = NuvioTheme.colors.Secondary,
+            containerColor = if (NETFLIX_BUTTONS) Color.Transparent else NuvioTheme.colors.BackgroundCard,
+            focusedContainerColor = if (NETFLIX_BUTTONS) NetflixPlayFocused else NuvioTheme.colors.Secondary,
             contentColor = NuvioTheme.colors.TextPrimary,
-            focusedContentColor = NuvioTheme.colors.OnSecondary
+            focusedContentColor = if (NETFLIX_BUTTONS) Color.Black else NuvioTheme.colors.OnSecondary
         ),
         border = IconButtonDefaults.border(
+            border = if (NETFLIX_BUTTONS) Border(
+                border = BorderStroke(2.dp, NetflixIconOutline),
+                shape = CircleShape
+            ) else Border.None,
             focusedBorder = Border(
-                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
+                border = if (NETFLIX_BUTTONS) BorderStroke(2.dp, Color.White) else NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
                 shape = CircleShape
             )
         ),
@@ -560,14 +573,18 @@ private fun ActionIconButton(
             }
             .focusProperties { up = FocusRequester.Cancel },
         colors = IconButtonDefaults.colors(
-            containerColor = if (selected) selectedContainerColor else NuvioTheme.colors.BackgroundCard,
-            focusedContainerColor = NuvioTheme.colors.Secondary,
+            containerColor = if (selected) selectedContainerColor else if (NETFLIX_BUTTONS) Color.Transparent else NuvioTheme.colors.BackgroundCard,
+            focusedContainerColor = if (NETFLIX_BUTTONS) NetflixPlayFocused else NuvioTheme.colors.Secondary,
             contentColor = if (selected) selectedContentColor else NuvioTheme.colors.TextPrimary,
-            focusedContentColor = NuvioTheme.colors.OnSecondary
+            focusedContentColor = if (NETFLIX_BUTTONS) Color.Black else NuvioTheme.colors.OnSecondary
         ),
         border = IconButtonDefaults.border(
+            border = if (NETFLIX_BUTTONS) Border(
+                border = BorderStroke(2.dp, NetflixIconOutline),
+                shape = CircleShape
+            ) else Border.None,
             focusedBorder = Border(
-                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
+                border = if (NETFLIX_BUTTONS) BorderStroke(2.dp, Color.White) else NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
                 shape = CircleShape
             )
         ),
@@ -783,9 +800,9 @@ private fun HeroMetaBadge(
         modifier = Modifier
             .border(
                 border = BorderStroke(NuvioTheme.spacing.hairline, contentColor.copy(alpha = 0.55f)),
-                shape = RoundedCornerShape(6.dp)
+                shape = if (NETFLIX_BUTTONS) NetflixBadgeShape else RoundedCornerShape(6.dp)
             )
-            .padding(horizontal = NuvioTheme.spacing.sm, vertical = NuvioTheme.spacing.xs),
+            .padding(horizontal = NuvioTheme.spacing.sm, vertical = if (NETFLIX_BUTTONS) 2.dp else NuvioTheme.spacing.xs),
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -809,9 +826,9 @@ private fun CombinedMetaBadge(
         modifier = Modifier
             .border(
                 border = BorderStroke(NuvioTheme.spacing.hairline, dividerColor),
-                shape = RoundedCornerShape(6.dp)
+                shape = if (NETFLIX_BUTTONS) NetflixBadgeShape else RoundedCornerShape(6.dp)
             )
-            .padding(horizontal = NuvioTheme.spacing.sm, vertical = NuvioTheme.spacing.xs),
+            .padding(horizontal = NuvioTheme.spacing.sm, vertical = if (NETFLIX_BUTTONS) 2.dp else NuvioTheme.spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
     ) {

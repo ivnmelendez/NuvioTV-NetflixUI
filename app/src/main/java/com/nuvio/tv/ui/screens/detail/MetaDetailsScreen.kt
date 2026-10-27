@@ -140,6 +140,10 @@ private enum class RestoreTarget {
     COMPANY_OR_NETWORK
 }
 
+// Netflix-style UI: hide Creator and Cast, Ratings and Trailer sections in details.
+// Hidden (not deleted) so upstream Nuvio merges stay simple.
+private const val HIDE_DETAIL_EXTRAS = true
+
 private enum class PeopleSectionTab {
     CAST,
     RATINGS,
@@ -1376,9 +1380,9 @@ private fun MetaDetailsContent(
             meta.type == ContentType.TV ||
             meta.apiType in listOf("series", "tv")
     }
-    val hasCastSection = directorWriterMembers.isNotEmpty() || normalCastMembers.isNotEmpty()
+    val hasCastSection = !HIDE_DETAIL_EXTRAS && (directorWriterMembers.isNotEmpty() || normalCastMembers.isNotEmpty())
     val hasMoreLikeThisSection = moreLikeThis.isNotEmpty()
-    val hasTrailerSection = remember(meta.trailers) { meta.trailers.any { !it.ytId.isNullOrBlank() } }
+    val hasTrailerSection = remember(meta.trailers) { !HIDE_DETAIL_EXTRAS && meta.trailers.any { !it.ytId.isNullOrBlank() } }
     val showEpisodeImdbRatings = detailImdbRatingsVisibility.showEpisodeRatings
     val visibleEpisodeImdbRatings = remember(
         episodeImdbRatings,
@@ -1395,7 +1399,7 @@ private fun MetaDetailsContent(
     val showStandardOverallRatings = overallRatingsVisibility
         .showStandardDetailRatings(isMdbListRatingsActive)
     val visibleMdbListRatings = mdbListRatings.takeIf { isMdbListRatingsActive }
-    val hasRatingsSection = isTvShow && showEpisodeImdbRatings
+    val hasRatingsSection = !HIDE_DETAIL_EXTRAS && isTvShow && showEpisodeImdbRatings
     val strTabCast = stringResource(R.string.detail_tab_cast)
     val strTabRatings = stringResource(R.string.detail_tab_ratings)
     val strTabMoreLikeThis = stringResource(R.string.detail_tab_more_like_this)

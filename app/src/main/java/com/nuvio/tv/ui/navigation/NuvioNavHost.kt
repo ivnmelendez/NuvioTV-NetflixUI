@@ -1,6 +1,5 @@
 package com.nuvio.tv.ui.navigation
 
-import com.nuvio.tv.ui.theme.NuvioMotion
 import com.nuvio.tv.ui.components.PlaybackAvailabilityProvider
 import com.nuvio.tv.ui.components.LocalPlaybackAvailability
 import com.nuvio.tv.ui.components.canStream
@@ -8,6 +7,7 @@ import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import com.nuvio.tv.R
 
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -67,6 +67,12 @@ fun NuvioNavHost(
     }
 }
 
+// Fade through black: outgoing screen leaves before the incoming one draws,
+// so only one heavy screen is composited at a time (cheaper on low-end TV boxes).
+const val NAV_FADE_OUT_MS = 120
+private const val FADE_OUT_MS = NAV_FADE_OUT_MS
+private const val FADE_IN_MS = 200
+
 @Composable
 private fun PlaybackNavHost(
     navController: NavHostController,
@@ -95,7 +101,7 @@ private fun PlaybackNavHost(
             if (isStreamToPlayer(from, to) && isAutoPlayNav) {
                 EnterTransition.None
             } else {
-                fadeIn(animationSpec = tween(NuvioMotion.tokens.durations.medium))
+                fadeIn(animationSpec = tween(durationMillis = FADE_IN_MS, delayMillis = FADE_OUT_MS, easing = LinearEasing))
             }
         },
         exitTransition = {
@@ -107,7 +113,7 @@ private fun PlaybackNavHost(
             if (isStreamToPlayer(from, to) && isAutoPlayNav) {
                 ExitTransition.None
             } else {
-                fadeOut(animationSpec = tween(NuvioMotion.tokens.durations.medium))
+                fadeOut(animationSpec = tween(durationMillis = FADE_OUT_MS, easing = LinearEasing))
             }
         },
         popEnterTransition = {
@@ -119,7 +125,7 @@ private fun PlaybackNavHost(
             if (isPlayerToStream(from, to) && isAutoPlayNav) {
                 EnterTransition.None
             } else {
-                fadeIn(animationSpec = tween(NuvioMotion.tokens.durations.medium))
+                fadeIn(animationSpec = tween(durationMillis = FADE_IN_MS, delayMillis = FADE_OUT_MS, easing = LinearEasing))
             }
         },
         popExitTransition = {
@@ -131,7 +137,7 @@ private fun PlaybackNavHost(
             if (isPlayerToStream(from, to) && isAutoPlayNav) {
                 ExitTransition.None
             } else {
-                fadeOut(animationSpec = tween(NuvioMotion.tokens.durations.medium))
+                fadeOut(animationSpec = tween(durationMillis = FADE_OUT_MS, easing = LinearEasing))
             }
         }
     ) {

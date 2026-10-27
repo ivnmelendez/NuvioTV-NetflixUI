@@ -100,6 +100,10 @@ import com.nuvio.tv.ui.util.contentTextDirection
 import com.nuvio.tv.ui.util.localizeEpisodeTitle
 import com.nuvio.tv.ui.util.rememberLongPressKeyTracker
 
+// Netflix-style season tabs: near-square gray button, white when focused, no focus ring.
+// Flip to false to restore the original pill tabs (keeps upstream merges simple).
+private const val NETFLIX_SEASON_TABS = true
+
 private const val EPISODE_CARD_CONTENT_TYPE = "episode_card"
 private const val EPISODE_SCROLL_REPEAT_THROTTLE_MS = 80L
 private const val EPISODE_RESTORE_FALLBACK_MS = 250L
@@ -124,11 +128,15 @@ fun SeasonTabs(
         regularSeasons + specials
     }
 
-    val tabShape = remember { RoundedCornerShape(20.dp) }
+    val tabShape = remember { RoundedCornerShape(if (NETFLIX_SEASON_TABS) 4.dp else 20.dp) }
     val tabBorder = CardDefaults.border(
         focusedBorder = Border(
-            border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-            shape = RoundedCornerShape(20.dp)
+            border = if (NETFLIX_SEASON_TABS) {
+                androidx.compose.foundation.BorderStroke(0.dp, Color.Transparent)
+            } else {
+                NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs)
+            },
+            shape = tabShape
         )
     )
     val tabScale = CardDefaults.scale(focusedScale = 1.0f)
@@ -240,8 +248,13 @@ fun SeasonTabs(
                     },
                 shape = CardDefaults.shape(shape = tabShape),
                 colors = CardDefaults.colors(
-                    containerColor = if (isSelected) NuvioTheme.colors.SurfaceVariant else NuvioTheme.colors.BackgroundCard,
-                    focusedContainerColor = NuvioTheme.colors.Secondary
+                    containerColor = when {
+                        NETFLIX_SEASON_TABS && isSelected -> Color(0xCC4D4D4D)
+                        NETFLIX_SEASON_TABS -> Color(0x66333333)
+                        isSelected -> NuvioTheme.colors.SurfaceVariant
+                        else -> NuvioTheme.colors.BackgroundCard
+                    },
+                    focusedContainerColor = if (NETFLIX_SEASON_TABS) Color.White else NuvioTheme.colors.Secondary
                 ),
                 border = tabBorder,
                 scale = tabScale
@@ -250,10 +263,12 @@ fun SeasonTabs(
                     text = if (season == 0) stringResource(R.string.episodes_specials) else stringResource(R.string.episodes_season, season),
                     style = tabTextStyle,
                     color = when {
+                        isFocused && NETFLIX_SEASON_TABS -> Color.Black
                         isFocused -> NuvioTheme.colors.OnSecondary
                         isSelected -> NuvioTheme.colors.TextPrimary
                         else -> textSecondary
                     },
+                    fontWeight = if (NETFLIX_SEASON_TABS) FontWeight.Bold else null,
                     modifier = Modifier.padding(vertical = 10.dp, horizontal = 20.dp)
                 )
             }

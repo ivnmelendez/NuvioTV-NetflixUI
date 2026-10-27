@@ -122,6 +122,10 @@ private fun localizedTypeLabel(key: String): String = when (key.lowercase()) {
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
+// Netflix-style UI: hide source label, Saved/Cloud tabs and filter selectors.
+// Hidden (not deleted) so upstream Nuvio merges stay simple. Defaults apply: Type=All, Sort=Added desc.
+private const val HIDE_LIBRARY_EXTRAS = true
+
 @Composable
 fun LibraryScreen(
     viewModel: LibraryViewModel = hiltViewModel(),
@@ -156,7 +160,9 @@ fun LibraryScreen(
     }
     val firstVisiblePosterKey = visibleItemKeys.firstOrNull()
     val posterCardStyle = PosterCardDefaults.Style.copy(
-        cornerRadius = uiState.posterCardCornerRadiusDp.dp
+        cornerRadius = uiState.posterCardCornerRadiusDp.dp,
+        // Netflix-style UI: no zoom on focus in Library, border only.
+        focusedScale = if (HIDE_LIBRARY_EXTRAS) 1f else PosterCardDefaults.Style.focusedScale
     )
 
     val routeCloudPlayback: (CloudLibraryPlaybackInfo) -> Unit = { info ->
@@ -206,6 +212,10 @@ fun LibraryScreen(
 
             if (!focused) {
                 focused = runCatching { primaryFocusRequester.requestFocus() }.isSuccess
+            }
+            if (!focused && HIDE_LIBRARY_EXTRAS) {
+                val firstRequester = firstVisiblePosterKey?.let { posterFocusRequesters[it] }
+                focused = firstRequester?.let { runCatching { it.requestFocus() }.isSuccess } ?: false
             }
             if (!focused) {
                 delay(16)
@@ -297,7 +307,7 @@ fun LibraryScreen(
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = 0.5.sp
                 )
-                Text(
+                if (!HIDE_LIBRARY_EXTRAS) Text(
                     text = when {
                         viewMode == LibraryViewMode.Cloud -> stringResource(R.string.library_source_cloud).uppercase()
                         uiState.sourceMode == LibrarySourceMode.TRAKT -> "TRAKT"
@@ -313,7 +323,7 @@ fun LibraryScreen(
             }
         }
 
-        item(span = { GridItemSpan(maxLineSpan) }) {
+        if (!HIDE_LIBRARY_EXTRAS) item(span = { GridItemSpan(maxLineSpan) }) {
             LibraryViewModeRow(
                 selectedMode = viewMode,
                 primaryFocusRequester = primaryFocusRequester,
@@ -348,7 +358,7 @@ fun LibraryScreen(
         }
 
         if (viewMode == LibraryViewMode.Saved) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
+            if (!HIDE_LIBRARY_EXTRAS) item(span = { GridItemSpan(maxLineSpan) }) {
                 LibrarySelectorsRow(
                     sourceMode = uiState.sourceMode,
                     listTabs = uiState.listTabs,

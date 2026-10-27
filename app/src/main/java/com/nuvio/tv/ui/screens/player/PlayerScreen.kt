@@ -88,6 +88,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -146,6 +147,18 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.media3.exoplayer.ExoPlayer
 import io.github.peerless2012.ass.media.widget.AssSubtitleView
 import kotlin.math.abs
+
+// Netflix-style player control icons (Netflix Design System "Media Control Buttons").
+// Flip to false to restore the original icons (keeps upstream merges simple).
+private const val NETFLIX_PLAYER_ICONS = true
+
+// Netflix-style player: hide Sources, engine switch, playback speed, external player and stream info.
+// Hidden (not deleted) so upstream Nuvio merges stay simple.
+private const val HIDE_PLAYER_EXTRAS = true
+
+// Netflix-style progress bar: solid Netflix red fill over a gray track (Design System "Continue Watching").
+private const val NETFLIX_PLAYER_PROGRESS = true
+private val NetflixProgressRed = Color(0xFFE50914)
 
 @Composable
 fun PlayerScreen(
@@ -2070,13 +2083,16 @@ private fun PlayerControlsOverlay(
     reportCodeVisible: Boolean,
     skipButtonVisible: Boolean = false
 ) {
-    val customPlayPainter = rememberRawSvgPainter(R.raw.ic_player_play)
-    val customPausePainter = rememberRawSvgPainter(R.raw.ic_player_pause)
-    val customSubtitlePainter = rememberRawSvgPainter(R.raw.ic_player_subtitles)
-    val customAudioPainter = rememberRawSvgPainter(R.raw.ic_player_audio_filled)
+    val customPlayPainter = rememberRawSvgPainter(if (NETFLIX_PLAYER_ICONS) R.raw.nf_player_play else R.raw.ic_player_play)
+    val customPausePainter = rememberRawSvgPainter(if (NETFLIX_PLAYER_ICONS) R.raw.nf_player_pause else R.raw.ic_player_pause)
+    val customSubtitlePainter = rememberRawSvgPainter(if (NETFLIX_PLAYER_ICONS) R.raw.nf_player_subtitles else R.raw.ic_player_subtitles)
+    val customAudioPainter = rememberRawSvgPainter(if (NETFLIX_PLAYER_ICONS) R.raw.nf_player_audio else R.raw.ic_player_audio_filled)
     val customSourcePainter = rememberRawSvgPainter(R.raw.ic_player_source)
-    val customAspectPainter = rememberRawSvgPainter(R.raw.ic_player_aspect_ratio)
-    val customEpisodesPainter = rememberRawSvgPainter(R.raw.ic_player_episodes)
+    val customAspectPainter = rememberRawSvgPainter(if (NETFLIX_PLAYER_ICONS) R.raw.nf_player_fullscreen else R.raw.ic_player_aspect_ratio)
+    val customEpisodesPainter = rememberRawSvgPainter(if (NETFLIX_PLAYER_ICONS) R.raw.nf_player_episodes else R.raw.ic_player_episodes)
+    // Netflix-only icons: the original controls have no custom painter for these.
+    val netflixNextPainter = if (NETFLIX_PLAYER_ICONS) rememberRawSvgPainter(R.raw.nf_player_next) else null
+    val netflixSpeedPainter = if (NETFLIX_PLAYER_ICONS) rememberRawSvgPainter(R.raw.nf_player_speed) else null
     val playbackTimeline by viewModel.playbackTimeline.collectAsState()
     val isLivePlayback = playbackTimeline.isLive
     val progressUpTarget = if (isLivePlayback) {
@@ -2255,6 +2271,7 @@ private fun PlayerControlsOverlay(
                     if (showNextEpisodeButton) {
                         ControlButton(
                             icon = Icons.Default.SkipNext,
+                            iconPainter = netflixNextPainter,
                             contentDescription = stringResource(R.string.next_episode_label),
                             onClick = onPlayNextEpisode,
                             upFocusRequester = progressUpTarget,
@@ -2287,7 +2304,7 @@ private fun PlayerControlsOverlay(
                         )
                     }
 
-                    ControlButton(
+                    if (!HIDE_PLAYER_EXTRAS) ControlButton(
                         icon = Icons.Default.SwapHoriz,
                         iconPainter = customSourcePainter,
                         contentDescription = stringResource(R.string.cd_sources),
@@ -2297,7 +2314,7 @@ private fun PlayerControlsOverlay(
                         onFocused = onResetHideTimer
                     )
 
-                    ControlButton(
+                    if (!HIDE_PLAYER_EXTRAS) ControlButton(
                         icon = Icons.Default.SwapHoriz,
                         contentDescription = stringResource(R.string.cd_switch_player_engine),
                         onClick = onSwitchPlayerEngine,
@@ -2333,8 +2350,9 @@ private fun PlayerControlsOverlay(
                             horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            ControlButton(
+                            if (!HIDE_PLAYER_EXTRAS) ControlButton(
                                 icon = Icons.Default.Speed,
+                                iconPainter = netflixSpeedPainter,
                                 contentDescription = stringResource(R.string.cd_playback_speed),
                                 onClick = {
                                     onShowSpeedDialog()
@@ -2354,7 +2372,7 @@ private fun PlayerControlsOverlay(
                                 onDownKey = onHideControls,
                                 onFocused = onResetHideTimer
                             )
-                            ControlButton(
+                            if (!HIDE_PLAYER_EXTRAS) ControlButton(
                                 icon = Icons.AutoMirrored.Filled.OpenInNew,
                                 contentDescription = stringResource(R.string.cd_open_external_player),
                                 onClick = {
@@ -2364,7 +2382,7 @@ private fun PlayerControlsOverlay(
                                 onDownKey = onHideControls,
                                 onFocused = onResetHideTimer
                             )
-                            ControlButton(
+                            if (!HIDE_PLAYER_EXTRAS) ControlButton(
                                 icon = Icons.Default.Info,
                                 contentDescription = stringResource(R.string.cd_stream_info),
                                 onClick = {
@@ -2715,7 +2733,10 @@ private fun ProgressBar(
                     .fillMaxHeight()
                     .width(trackWidth * animatedBufferedProgress)
                     .clip(RoundedCornerShape(3.dp))
-                    .background(NuvioTheme.colors.Secondary.copy(alpha = 0.35f))
+                    .background(
+                        if (NETFLIX_PLAYER_PROGRESS) Color.White.copy(alpha = 0.35f)
+                        else NuvioTheme.colors.Secondary.copy(alpha = 0.35f)
+                    )
             )
         }
         // Played fill.
@@ -2724,7 +2745,9 @@ private fun ProgressBar(
                 .fillMaxHeight()
                 .width(trackWidth * animatedProgress)
                 .clip(RoundedCornerShape(3.dp))
-                .background(accentBrush)
+                .background(
+                    if (NETFLIX_PLAYER_PROGRESS) SolidColor(NetflixProgressRed) else accentBrush
+                )
         )
     }
 }

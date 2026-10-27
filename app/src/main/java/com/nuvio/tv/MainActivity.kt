@@ -172,6 +172,7 @@ import com.nuvio.tv.ui.components.NuvioScrollDefaults
 import com.nuvio.tv.ui.components.BrandWordmark
 import com.nuvio.tv.ui.components.LocalCardDepthStyle
 import com.nuvio.tv.ui.components.ProfileAvatarCircle
+import com.nuvio.tv.ui.navigation.NAV_FADE_OUT_MS
 import com.nuvio.tv.ui.navigation.NuvioNavHost
 import com.nuvio.tv.ui.navigation.Screen
 import com.nuvio.tv.ui.membership.LocalMemberAccess
@@ -1035,6 +1036,13 @@ open class MainActivity : ComponentActivity() {
                         buildList {
                             add(
                                 DrawerItem(
+                                    route = Screen.Search.route,
+                                    label = strNavSearch,
+                                    iconRes = R.raw.sidebar_search_thin
+                                )
+                            )
+                            add(
+                                DrawerItem(
                                     route = Screen.Home.route,
                                     label = strNavHome,
                                     icon = Icons.Default.Home
@@ -1051,16 +1059,9 @@ open class MainActivity : ComponentActivity() {
                             }
                             add(
                                 DrawerItem(
-                                    route = Screen.Search.route,
-                                    label = strNavSearch,
-                                    iconRes = R.raw.sidebar_search
-                                )
-                            )
-                            add(
-                                DrawerItem(
                                     route = Screen.Library.route,
                                     label = strNavLibrary,
-                                    iconRes = R.raw.sidebar_library
+                                    iconRes = R.raw.sidebar_library_plus
                                 )
                             )
                             add(
@@ -1075,7 +1076,7 @@ open class MainActivity : ComponentActivity() {
                     val selectedDrawerRoute = drawerItems.firstOrNull { item ->
                         currentRoute == item.route || currentRoute?.startsWith("${item.route}/") == true
                     }?.route
-                    val selectedDrawerItem = drawerItems.firstOrNull { it.route == selectedDrawerRoute } ?: drawerItems.first()
+                    val selectedDrawerItem = drawerItems.firstOrNull { it.route == selectedDrawerRoute } ?: drawerItems.first { it.route == Screen.Home.route }
 
                     val confirmExitEnabled by profileManager.confirmExitEnabled.collectAsState()
                     var backPressedOnce by remember { mutableStateOf(false) }
@@ -1378,6 +1379,17 @@ private fun LegacySidebarScaffold(
     val drawerItemFocusRequesters = rememberDrawerItemFocusRequesters(drawerItems)
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val showSidebar = currentRoute in rootRoutes
+    // Visual sidebar/padding switch waits for the nav fade-out so nothing shifts
+    // while the outgoing screen is still visible.
+    var sidebarVisible by remember { mutableStateOf(showSidebar) }
+    var visualSelectedRoute by remember { mutableStateOf(selectedDrawerRoute) }
+    LaunchedEffect(showSidebar, selectedDrawerRoute) {
+        if (sidebarVisible != showSidebar || visualSelectedRoute != selectedDrawerRoute) {
+            delay(NAV_FADE_OUT_MS.toLong())
+            sidebarVisible = showSidebar
+            visualSelectedRoute = selectedDrawerRoute
+        }
+    }
 
     LaunchedEffect(currentRoute) {
         longPressBackHeld.value = false
@@ -1444,9 +1456,13 @@ private fun LegacySidebarScaffold(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        scrimBrush = androidx.compose.ui.graphics.SolidColor(Color.Transparent),
         drawerContent = { drawerValue ->
-            if (showSidebar) {
-                val drawerWidth = if (drawerValue == DrawerValue.Open) openDrawerWidth else closedDrawerWidth
+            // Constant-size host: drawer never animates its own width when the
+            // sidebar content is swapped in/out.
+            Box(modifier = Modifier.fillMaxHeight().width(closedDrawerWidth)) {
+            if (sidebarVisible) {
+                val drawerWidth = closedDrawerWidth
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
@@ -1468,7 +1484,8 @@ private fun LegacySidebarScaffold(
                             }
                         }
                 ) {
-                    val isExpanded = drawerValue == DrawerValue.Open
+                    val isExpanded = false
+                    val sidebarFocusable = drawerValue == DrawerValue.Open
                     val itemWidth by animateDpAsState(
                         targetValue = if (isExpanded) openDrawerItemWidth else NuvioTheme.sizes.avatars.md,
                         animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast, easing = NuvioMotion.tokens.easings.standard),
@@ -1543,7 +1560,7 @@ private fun LegacySidebarScaffold(
                             .offset(y = 28.dp)
                             .fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
-                        horizontalAlignment = Alignment.Start
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         drawerItems.forEach { item ->
                             key(item.route) {
@@ -1551,8 +1568,9 @@ private fun LegacySidebarScaffold(
                                     label = item.label,
                                     iconRes = item.iconRes,
                                     icon = item.icon,
-                                    selected = selectedDrawerRoute == item.route,
+                                    selected = visualSelectedRoute == item.route,
                                     expanded = isExpanded,
+                                    focusable = sidebarFocusable,
                                     onClick = {
                                         keyboardController?.hide()
                                         onNavigate(item.route)
@@ -1568,7 +1586,6 @@ private fun LegacySidebarScaffold(
                                         drawerItemFocusRequesters.getValue(item.route)
                                     )
                                         .width(itemWidth)
-                                        .offset(x = NuvioTheme.spacing.md)
                                 )
                         }
                     }
@@ -1576,16 +1593,13 @@ private fun LegacySidebarScaffold(
             }
         }
         }
+        }
     ) {
-        val contentStartPadding by animateDpAsState(
-            targetValue = if (showSidebar && !sidebarCollapsed) {
-                NuvioLayout.tokens.sidebarContentOffset
-            } else {
-                NuvioTheme.spacing.none
-            },
-            animationSpec = tween(NuvioMotion.tokens.durations.medium),
-            label = "contentStartPadding"
-        )
+        val contentStartPadding = if (sidebarVisible && !sidebarCollapsed) {
+            NuvioLayout.tokens.sidebarContentOffset
+        } else {
+            NuvioTheme.spacing.none
+        }
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -1656,6 +1670,7 @@ private fun LegacySidebarButton(
     icon: ImageVector?,
     selected: Boolean,
     expanded: Boolean,
+    focusable: Boolean = expanded,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
@@ -1663,6 +1678,7 @@ private fun LegacySidebarButton(
     val itemShape = NuvioTheme.shapes.navItem
     val backgroundColor by animateColorAsState(
         targetValue = when {
+            isFocused && !expanded -> Color.Transparent
             isFocused -> NuvioTheme.colors.FocusBackground
             expanded && selected -> NuvioTheme.colors.Secondary
             else -> Color.Transparent
@@ -1707,7 +1723,7 @@ private fun LegacySidebarButton(
                 scaleY = itemScale
                 transformOrigin = TransformOrigin.Center
             }
-            .focusProperties { canFocus = expanded }
+            .focusProperties { canFocus = focusable }
             .onFocusChanged { isFocused = it.hasFocus },
         colors = CardDefaults.colors(
             containerColor = backgroundColor,
@@ -1731,9 +1747,20 @@ private fun LegacySidebarButton(
             brush = selectedCollapsedIconBrush,
             modifier = Modifier
                 .size(NuvioComponents.tokens.sidebar.iconSize)
-                .align(Alignment.CenterStart)
-                .offset(x = 13.dp)
+                .align(if (expanded) Alignment.CenterStart else Alignment.Center)
+                .offset(x = if (expanded) 13.dp else 0.dp)
         )
+        if (selected && !expanded) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(y = (-5).dp)
+                    .width(16.dp)
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color(0xFFE50914))
+            )
+        }
         if (expanded) {
             com.nuvio.tv.ui.components.AutoResizeText(
                 text = label,

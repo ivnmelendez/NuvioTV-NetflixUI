@@ -27,7 +27,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListPrefetchStrategy
@@ -420,6 +426,56 @@ private fun ModernCatalogRowItem(
     )
 }
 
+/**
+ * Netflix Top 10 rank: a large outlined digit that sits mostly behind the poster that follows it
+ * in the row (the poster is drawn after it and overlaps its right edge).
+ *
+ * The digit is drawn as a vector outline rather than stroked text: font glyphs such as "3" are built
+ * from overlapping contours, and stroking them shows the inner seams. Uniting the contours first
+ * leaves only the outer silhouette.
+ */
+@Composable
+private fun ModernRankNumber(rank: Int, cardHeight: Dp) {
+    val density = LocalDensity.current
+    val heightPx = with(density) { cardHeight.toPx() }
+    val strokePx = with(density) { 3.dp.toPx() }
+    val outline = remember(rank, heightPx, strokePx) {
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.NORMAL)
+            textSize = heightPx * 1.3f
+        }
+        val path = android.graphics.Path()
+        paint.getTextPath(rank.toString(), 0, rank.toString().length, 0f, 0f, path)
+        // Union with itself resolves overlapping contours into a single clean silhouette.
+        path.op(path, android.graphics.Path.Op.UNION)
+        val bounds = android.graphics.RectF()
+        path.computeBounds(bounds, true)
+        val pad = strokePx
+        // Bottom of the digit sits on the poster's bottom edge.
+        path.offset(pad - bounds.left, heightPx - pad - bounds.bottom)
+        RankOutline(path.asComposePath(), bounds.width() + pad * 2f)
+    }
+    // Overlap scales with the digit so narrow digits like "1" are not mostly hidden.
+    val overlapPx = outline.widthPx * 0.22f
+    val widthDp = with(density) { (outline.widthPx - overlapPx).coerceAtLeast(0f).toDp() }
+    Canvas(
+        modifier = Modifier
+            .height(cardHeight)
+            .width(widthDp)
+            .clearAndSetSemantics { }
+    ) {
+        // Canvas does not clip, so the part of the digit past the reported width (the poster
+        // overlap) is still drawn.
+        drawPath(
+            path = outline.path,
+            color = Color.White.copy(alpha = 0.5f),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokePx)
+        )
+    }
+}
+
+private class RankOutline(val path: androidx.compose.ui.graphics.Path, val widthPx: Float)
+
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun ModernRowSection(
@@ -475,6 +531,7 @@ internal fun ModernRowSection(
     itemFocusRequesters: StableRef<MutableMap<Int, FocusRequester>> = StableRef(mutableMapOf())
 ) {
     // Unwrap StableRef wrappers
+    @Suppress("NAME_SHADOWING") val useLandscapePosters = useLandscapePosters && !row.rankStyle
     @Suppress("NAME_SHADOWING") val focusedItemByRow = focusedItemByRow.value
     @Suppress("NAME_SHADOWING") val rowListStates = rowListStates.value
     @Suppress("NAME_SHADOWING") val loadMoreRequestedTotals = loadMoreRequestedTotals.value
@@ -993,9 +1050,13 @@ internal fun ModernRowSection(
                                 }
                             }
                             val placeholderFocusBlock = isPlaceholder && index > 0
-                            Box(modifier = if (placeholderFocusBlock) {
+                            val rankedModifier = if (placeholderFocusBlock) {
                                 Modifier.focusProperties { canFocus = false }
-                            } else Modifier) {
+                            } else Modifier
+                            Row(modifier = rankedModifier, verticalAlignment = Alignment.Bottom) {
+                            if (row.rankStyle) {
+                                ModernRankNumber(rank = index + 1, cardHeight = portraitCatalogCardHeight)
+                            }
                             ModernCatalogRowItem(
                                 item = item,
                                 payload = payload,
@@ -1033,7 +1094,7 @@ internal fun ModernRowSection(
                                 onExpandedCatalogFocusKeyChange = onExpandedCatalogFocusKeyChange,
                                 enrichedPreviews = enrichedPreviews
                             )
-                            } // Box
+                            } // Row
                         }
                     }
                 }

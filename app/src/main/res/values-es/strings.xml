@@ -897,6 +897,8 @@
     <string name="nav_home">Inicio</string>
     <string name="nav_discover">Descubrir</string>
     <string name="nav_search">Buscar</string>
+    <string name="nav_movies">Películas</string>
+    <string name="nav_series">Series</string>
     <string name="nav_library">Biblioteca</string>
     <string name="nav_addons">Complementos</string>
     <string name="nav_settings">Configuración</string>

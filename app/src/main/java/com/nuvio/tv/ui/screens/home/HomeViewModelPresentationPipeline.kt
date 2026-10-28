@@ -267,8 +267,8 @@ internal fun HomeViewModel.observeModernHomePresentationPipeline() {
                 ModernHomePresentationInput(
                     homeRows = state.homeRows,
                     catalogRows = state.catalogRows,
-                    continueWatchingItems = if (state.continueWatchingEnabled) state.continueWatchingItems else emptyList(),
-                    upcomingItems = if (state.continueWatchingEnabled) state.upcomingItems else emptyList(),
+                    continueWatchingItems = if (state.continueWatchingEnabled && showContinueWatchingOnThisTab) state.continueWatchingItems else emptyList(),
+                    upcomingItems = if (state.continueWatchingEnabled && showContinueWatchingOnThisTab) state.upcomingItems else emptyList(),
                     useLandscapePosters = state.modernLandscapePostersEnabled,
                     showCatalogTypeSuffix = state.catalogTypeSuffixEnabled,
                     showFullReleaseDate = state.showFullReleaseDate,
@@ -334,7 +334,7 @@ internal fun HomeViewModel.observeExternalMetaPrefetchPreferencePipeline() {
     viewModelScope.launch {
         layoutPreferenceDataStore.preferExternalMetaAddonDetail
             .collectLatest { enabled ->
-                externalMetaPrefetchEnabled = enabled
+                externalMetaPrefetchPreference = enabled
                 if (!enabled) {
                     externalMetaPrefetchJob?.cancel()
                     pendingExternalMetaPrefetchItemId = null

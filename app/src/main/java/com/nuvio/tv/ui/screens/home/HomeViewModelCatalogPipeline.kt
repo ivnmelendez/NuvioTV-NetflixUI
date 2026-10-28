@@ -144,6 +144,8 @@ internal suspend fun HomeViewModel.loadAllCatalogsPipeline(
     addons: List<Addon>,
     forceReload: Boolean = false
 ) {
+    // Movies/Series tabs show remote rows only; skip loading every addon catalog in the background.
+    if (remoteTab != com.nuvio.tv.data.remoteconfig.RemoteHomeConfig.TAB_HOME) return
     val signature = buildHomeCatalogLoadSignature(addons)
     val hasActiveLoads = synchronized(activeCatalogLoadJobs) { activeCatalogLoadJobs.any { it.isActive } }
     if (!forceReload &&
@@ -372,7 +374,7 @@ internal suspend fun HomeViewModel.loadAllCatalogsPipeline(
  * after the initial catalog load (due to the layout preference debounce).
  */
 internal fun HomeViewModel.loadHeroCatalogsPipeline() {
-    val heroCatalogKeys = currentHeroCatalogKeys
+    val heroCatalogKeys = if (remoteTab != com.nuvio.tv.data.remoteconfig.RemoteHomeConfig.TAB_HOME) emptyList() else currentHeroCatalogKeys
     if (heroCatalogKeys.isEmpty() || addonsCache.isEmpty()) return
 
     val heroCatalogSet = heroCatalogKeys.toSet()
@@ -567,9 +569,23 @@ internal fun HomeViewModel.loadMoreCatalogItemsPipeline(catalogId: String, addon
 }
 
 internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
-    val (orderedKeys, catalogSnapshot) = snapshotCatalogState()
+    val remoteRows = remoteHomeRows
+    // Movies/Series tabs only ever show remote rows (empty while loading), never addon catalogs.
+    val useRemote = remoteRows.isNotEmpty() || remoteTab != com.nuvio.tv.data.remoteconfig.RemoteHomeConfig.TAB_HOME
+    // Remote rows live in catalogsMap so focus enrichment can update their items; re-add if a
+    // full addon reload cleared them.
+    if (useRemote) {
+        remoteRows.forEach { row ->
+            val key = "remote:${row.catalogId}"
+            val missing = synchronized(catalogStateLock) { key !in catalogsMap }
+            if (missing) replaceCatalogRow(key, row)
+        }
+    }
+    val (addonKeys, catalogSnapshot) = snapshotCatalogState()
+    val orderedKeys = if (!useRemote) addonKeys else remoteRows.map { "remote:${it.catalogId}" }
     val collectionsSnapshot = collectionsCache.associateBy { "collection_${it.id}" }
-    val heroCatalogKeys = currentHeroCatalogKeys
+    // Remote rows build their hero from their own rows, never from the addon hero selection.
+    val heroCatalogKeys = if (useRemote) emptyList() else currentHeroCatalogKeys
     val currentLayout = _uiState.value.homeLayout
     val currentGridItems = _uiState.value.gridItems
     val heroSectionEnabled = _uiState.value.heroSectionEnabled

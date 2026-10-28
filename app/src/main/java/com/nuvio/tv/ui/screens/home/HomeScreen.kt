@@ -78,6 +78,7 @@ private const val HOME_STABLE_GATE_TIMEOUT_MS = 5_000L
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
+    remoteTab: String = com.nuvio.tv.data.remoteconfig.RemoteHomeConfig.TAB_HOME,
     onNavigateToDetail: (String, String, String) -> Unit,
     onContinueWatchingClick: (ContinueWatchingItem) -> Unit = { item ->
         onNavigateToDetail(
@@ -97,7 +98,17 @@ fun HomeScreen(
     onNavigateToCatalogSeeAll: (String, String, String) -> Unit = { _, _, _ -> },
     onNavigateToFolderDetail: (String, String) -> Unit = { _, _ -> }
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val rawUiState by viewModel.uiState.collectAsStateWithLifecycle()
+    // Movies/Series tabs reuse this screen but never show Continue Watching.
+    val uiState = remember(rawUiState, remoteTab) {
+        if (remoteTab == com.nuvio.tv.data.remoteconfig.RemoteHomeConfig.TAB_HOME) rawUiState
+        else rawUiState.copy(
+            continueWatchingEnabled = false,
+            continueWatchingItems = emptyList(),
+            upcomingItems = emptyList()
+        )
+    }
+    LaunchedEffect(remoteTab) { viewModel.setRemoteTab(remoteTab) }
 
     // Home was the only major screen without a lifecycle observer, so nothing ever told it to
     // look at its catalogs again.
@@ -184,6 +195,12 @@ fun HomeScreen(
         }
         // Wait until catalog loading has completed with content AND the CW
         // pipeline has completed its first emission.
+        // Movies/Series tabs never load addon catalogs or Continue Watching, so they must not wait for them.
+        val remoteTabReady = remoteTab != com.nuvio.tv.data.remoteconfig.RemoteHomeConfig.TAB_HOME &&
+            !uiState.isLoading && (modernPresentationReady || !hasCatalogContent)
+        if (!homeStableGateReleased && remoteTabReady) {
+            homeStableGateReleased = true
+        }
         if (!homeStableGateReleased &&
             catalogLoadingStarted &&
             !uiState.isLoading &&

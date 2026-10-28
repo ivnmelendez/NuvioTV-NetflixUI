@@ -21,6 +21,9 @@ import com.nuvio.tv.data.local.TraktSettingsDataStore
 import com.nuvio.tv.data.local.ContinueWatchingEnrichmentCache
 import com.nuvio.tv.data.trailer.TrailerService
 import com.nuvio.tv.domain.model.Addon
+import com.nuvio.tv.domain.model.enabledAddons
+import com.nuvio.tv.domain.model.skipStep
+import com.nuvio.tv.domain.model.supportsExtra
 import com.nuvio.tv.domain.model.CatalogDescriptor
 import com.nuvio.tv.domain.model.CatalogRow
 import com.nuvio.tv.domain.model.Collection
@@ -40,6 +43,10 @@ import com.nuvio.tv.domain.repository.WatchProgressRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -81,7 +88,9 @@ class HomeViewModel @Inject constructor(
     internal val watchedSeriesStateHolder: com.nuvio.tv.data.local.WatchedSeriesStateHolder,
     internal val cwEnrichmentCache: ContinueWatchingEnrichmentCache,
     internal val profileManager: com.nuvio.tv.core.profile.ProfileManager,
-    internal val tvRecommendationManager: TvRecommendationManager
+    internal val tvRecommendationManager: TvRecommendationManager,
+    internal val remoteHomeConfigRepository: com.nuvio.tv.data.remoteconfig.RemoteHomeConfigRepository,
+    internal val mdbListListRepository: com.nuvio.tv.data.remoteconfig.MdbListListRepository
 ) : ViewModel() {
     companion object {
         internal const val TAG = "HomeViewModel"
@@ -292,7 +301,11 @@ class HomeViewModel @Inject constructor(
     internal var activePosterListPickerInput: LibraryEntryInput? = null
     internal var pendingPosterListPickerChanges: ListMembershipChanges? = null
     @Volatile
-    internal var externalMetaPrefetchEnabled: Boolean = false
+    internal var externalMetaPrefetchPreference: Boolean = false
+    internal val externalMetaPrefetchEnabled: Boolean
+        get() = externalMetaPrefetchPreference
+    internal val showContinueWatchingOnThisTab: Boolean
+        get() = remoteTab == com.nuvio.tv.data.remoteconfig.RemoteHomeConfig.TAB_HOME
     @Volatile
     internal var continueWatchingSortMode: ContinueWatchingSortMode = ContinueWatchingSortMode.DEFAULT
     internal val startupStartedAtMs: Long = SystemClock.elapsedRealtime()
@@ -756,6 +769,7 @@ class HomeViewModel @Inject constructor(
      * correction cannot block or force a refresh.
      */
     internal var lastHomeCatalogRefreshAtMs: Long = 0L
+    private var lastRemoteHomeLoadAtMs: Long = 0L
 
     /**
      * Row the user currently has focus on, reported by the Home content as it changes. Kept out
@@ -794,7 +808,122 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    /** Rows defined in the remote config (MDBList lists); when non-empty they replace the addon rows on Home. */
+    internal var remoteHomeRows: List<CatalogRow> = emptyList()
+
+    internal var remoteTab: String = com.nuvio.tv.data.remoteconfig.RemoteHomeConfig.TAB_HOME
+
+    fun setRemoteTab(tab: String) {
+        if (tab != remoteTab) {
+            remoteTab = tab
+            remoteHomeRows = emptyList()
+            remoteRowsPublishedOnce = false
+        }
+        lastRemoteHomeLoadAtMs = android.os.SystemClock.elapsedRealtime()
+        loadRemoteHomeRows()
+    }
+
+    private suspend fun loadRemoteRowItems(
+        row: com.nuvio.tv.data.remoteconfig.RemoteRow,
+        addons: List<Addon>
+    ): List<MetaPreview> {
+        if (row.source != com.nuvio.tv.data.remoteconfig.RemoteRow.SOURCE_ADDON) {
+            return mdbListListRepository.items(row)
+        }
+        val type = row.type ?: "movie"
+        for (addon in addons) {
+            val catalog = addon.catalogs.firstOrNull { it.id == row.catalogId && it.apiType.equals(type, ignoreCase = true) }
+                ?: continue
+            val result = catalogRepository.getCatalog(
+                addonBaseUrl = addon.baseUrl,
+                addonId = addon.id,
+                addonName = addon.displayName,
+                catalogId = catalog.id,
+                catalogName = catalog.name,
+                type = catalog.apiType,
+                skip = 0,
+                skipStep = catalog.skipStep(),
+                supportsSkip = catalog.supportsExtra("skip")
+            ).first { it is com.nuvio.tv.core.network.NetworkResult.Success || it is com.nuvio.tv.core.network.NetworkResult.Error }
+            if (result is com.nuvio.tv.core.network.NetworkResult.Success) return result.data.items.take(row.limit)
+        }
+        return emptyList()
+    }
+
+    private suspend fun buildRemoteRows(
+        configRows: List<com.nuvio.tv.data.remoteconfig.RemoteRow>,
+        fetch: suspend (com.nuvio.tv.data.remoteconfig.RemoteRow) -> List<MetaPreview>
+    ): List<CatalogRow> {
+        // Same cap as addon catalogs so low-end devices are not hit with every request at once.
+        val permits = kotlinx.coroutines.sync.Semaphore(MAX_CATALOG_LOAD_CONCURRENCY)
+        return coroutineScope {
+            configRows.mapIndexed { index, row ->
+                async { Triple(index, row, permits.withPermit { fetch(row) }) }
+            }.awaitAll()
+        }.mapNotNull { (index, row, items) ->
+            if (items.isEmpty()) return@mapNotNull null
+            val shown = if (row.isTop10) items.take(10) else items
+            CatalogRow(
+                addonId = "remote-config",
+                addonName = "",
+                addonBaseUrl = "",
+                // Index keeps keys unique when the same list appears in more than one row.
+                catalogId = "$index:${row.list}",
+                catalogName = row.title,
+                type = shown.first().type,
+                items = shown,
+                hasMore = false,
+                rankStyle = row.isTop10
+            )
+        }
+    }
+
+    private fun publishRemoteRows(tab: String, rows: List<CatalogRow>) {
+        if (tab != remoteTab) return
+        val changed = rows != remoteHomeRows
+        // First publish always runs the pipeline, even with no rows, so isLoading clears.
+        if (!changed && remoteRowsPublishedOnce) return
+        remoteRowsPublishedOnce = true
+        remoteHomeRows = rows
+        rows.forEach { replaceCatalogRow("remote:${it.catalogId}", it) }
+        scheduleUpdateCatalogRows()
+    }
+
+    private var remoteRowsPublishedOnce = false
+
+    fun loadRemoteHomeRows() {
+        val tab = remoteTab
+        viewModelScope.launch {
+            // 1) Show the last known rows immediately (memory/disk), 2) then refresh from the network.
+            remoteHomeConfigRepository.cached()?.rowsFor(tab)?.takeIf { it.isNotEmpty() }?.let { cachedRows ->
+                val rows = buildRemoteRows(cachedRows) { row ->
+                    if (row.source == com.nuvio.tv.data.remoteconfig.RemoteRow.SOURCE_ADDON) emptyList()
+                    else mdbListListRepository.cachedItems(row)
+                }
+                if (rows.isNotEmpty()) publishRemoteRows(tab, rows)
+            }
+            val config = remoteHomeConfigRepository.load()
+            val configRows = config.rowsFor(tab)
+            val installedAddons = if (configRows.any { it.source == com.nuvio.tv.data.remoteconfig.RemoteRow.SOURCE_ADDON }) {
+                runCatching { addonRepository.getInstalledAddons().first().enabledAddons() }.getOrDefault(emptyList())
+            } else emptyList()
+            publishRemoteRows(tab, buildRemoteRows(configRows) { loadRemoteRowItems(it, installedAddons) })
+
+            // Warm the other tabs' row files so opening Movies/Series is instant.
+            if (tab == com.nuvio.tv.data.remoteconfig.RemoteHomeConfig.TAB_HOME) {
+                (config.movies + config.series)
+                    .filter { it.source != com.nuvio.tv.data.remoteconfig.RemoteRow.SOURCE_ADDON }
+                    .forEach { runCatching { mdbListListRepository.items(it) } }
+            }
+        }
+    }
+
     fun refreshHomeCatalogsIfStale() {
+        val remoteNow = android.os.SystemClock.elapsedRealtime()
+        if (remoteNow - lastRemoteHomeLoadAtMs >= HOME_CATALOG_REFRESH_TTL_MS) {
+            lastRemoteHomeLoadAtMs = remoteNow
+            loadRemoteHomeRows()
+        }
         if (addonsCache.isEmpty()) return
         val now = android.os.SystemClock.elapsedRealtime()
         if (now - lastHomeCatalogRefreshAtMs < HOME_CATALOG_REFRESH_TTL_MS) return

@@ -1011,6 +1011,8 @@ open class MainActivity : ComponentActivity() {
                     val rootRoutes = remember(discoverLocation) {
                         buildSet {
                             add(Screen.Home.route)
+                            add(Screen.Movies.route)
+                            add(Screen.SeriesTab.route)
                             add(Screen.Search.route)
                             add(Screen.Library.route)
                             add(Screen.Settings.route)
@@ -1023,12 +1025,16 @@ open class MainActivity : ComponentActivity() {
                     val strNavHome = stringResource(R.string.nav_home)
                     val strNavDiscover = stringResource(R.string.nav_discover)
                     val strNavSearch = stringResource(R.string.nav_search)
+                    val strNavMovies = stringResource(R.string.nav_movies)
+                    val strNavSeries = stringResource(R.string.nav_series)
                     val strNavLibrary = stringResource(R.string.nav_library)
                     val strNavSettings = stringResource(R.string.nav_settings)
                     val drawerItems = remember(
                         strNavHome,
                         strNavDiscover,
                         strNavSearch,
+                        strNavMovies,
+                        strNavSeries,
                         strNavLibrary,
                         strNavSettings,
                         discoverLocation
@@ -1046,6 +1052,20 @@ open class MainActivity : ComponentActivity() {
                                     route = Screen.Home.route,
                                     label = strNavHome,
                                     icon = Icons.Default.Home
+                                )
+                            )
+                            add(
+                                DrawerItem(
+                                    route = Screen.Movies.route,
+                                    label = strNavMovies,
+                                    iconRes = R.raw.sidebar_movies
+                                )
+                            )
+                            add(
+                                DrawerItem(
+                                    route = Screen.SeriesTab.route,
+                                    label = strNavSeries,
+                                    iconRes = R.raw.sidebar_series
                                 )
                             )
                             if (discoverLocation == DiscoverLocation.IN_SIDEBAR) {

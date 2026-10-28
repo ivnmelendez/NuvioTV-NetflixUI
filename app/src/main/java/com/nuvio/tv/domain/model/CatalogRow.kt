@@ -21,7 +21,9 @@ data class CatalogRow(
     val skipStep: Int = 100,
     val nextSkip: Int = 0,
     val consecutiveDuplicatePages: Int = 0,
-    val extraArgs: Map<String, String> = emptyMap()
+    val extraArgs: Map<String, String> = emptyMap(),
+    /** Netflix "Top 10" template: big outlined rank numbers behind each poster. */
+    val rankStyle: Boolean = false
 ) {
     val apiType: String
         get() = type.toApiString(rawType)

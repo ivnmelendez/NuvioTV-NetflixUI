@@ -141,7 +141,7 @@ internal fun buildModernHomePresentation(
                     val canReuseMappedRow =
                         cached != null &&
                             cached.source == row &&
-                            cached.useLandscapePosters == input.useLandscapePosters &&
+                            cached.useLandscapePosters == (input.useLandscapePosters && !row.rankStyle) &&
                             cached.showCatalogTypeSuffix == input.showCatalogTypeSuffix &&
                             cached.showImdbRatings == input.showImdbRatings &&
                             cached.localeTag == currentLocaleTag
@@ -154,6 +154,8 @@ internal fun buildModernHomePresentation(
                             cachedMappedRow.copy(globalRowIndex = index)
                         }
                     } else {
+                        // Top 10 rows always use portrait posters, like Netflix.
+                        val rowUseLandscape = input.useLandscapePosters && !row.rankStyle
                         val rowItemOccurrenceCounts = mutableMapOf<String, Int>()
                         val rowItemCache = cache.catalogItemCache.getOrPut(rowKey) { mutableMapOf() }
                         HeroCarouselRow(
@@ -171,6 +173,7 @@ internal fun buildModernHomePresentation(
                             supportsSkip = row.supportsSkip,
                             hasMore = row.hasMore,
                             isLoading = row.isLoading,
+                            rankStyle = row.rankStyle,
                             items = row.items.mapIndexed { itemIndex, item ->
                                 val occurrence = rowItemOccurrenceCounts.getOrDefault(item.id, 0)
                                 rowItemOccurrenceCounts[item.id] = occurrence + 1
@@ -178,7 +181,7 @@ internal fun buildModernHomePresentation(
                                 val cachedItem = rowItemCache[cacheKey]
                                 if (cachedItem != null &&
                                     cachedItem.source == item &&
-                                    cachedItem.useLandscapePosters == input.useLandscapePosters &&
+                                    cachedItem.useLandscapePosters == rowUseLandscape &&
                                     cachedItem.showFullReleaseDate == input.showFullReleaseDate &&
                                     cachedItem.showImdbRatings == input.showImdbRatings
                                 ) {
@@ -191,7 +194,7 @@ internal fun buildModernHomePresentation(
                                     val built = buildCatalogItem(
                                         item = item,
                                         row = row,
-                                        useLandscapePosters = input.useLandscapePosters,
+                                        useLandscapePosters = rowUseLandscape,
                                         occurrence = occurrence,
                                         strTypeMovie = strTypeMovie,
                                         strTypeSeries = strTypeSeries,
@@ -201,7 +204,7 @@ internal fun buildModernHomePresentation(
                                     ).copy(key = row.stableItemKey(item, occurrence))
                                     rowItemCache[cacheKey] = CachedCarouselItem(
                                         source = item,
-                                        useLandscapePosters = input.useLandscapePosters,
+                                        useLandscapePosters = rowUseLandscape,
                                         showFullReleaseDate = input.showFullReleaseDate,
                                         showImdbRatings = input.showImdbRatings,
                                         carouselItem = built
@@ -214,7 +217,7 @@ internal fun buildModernHomePresentation(
 
                     cache.catalogRows[rowKey] = ModernCatalogRowBuildCacheEntry(
                         source = row,
-                        useLandscapePosters = input.useLandscapePosters,
+                        useLandscapePosters = input.useLandscapePosters && !row.rankStyle,
                         showCatalogTypeSuffix = input.showCatalogTypeSuffix,
                         showImdbRatings = input.showImdbRatings,
                         localeTag = currentLocaleTag,
